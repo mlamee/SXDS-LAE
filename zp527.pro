@@ -1,0 +1,123 @@
+pro zp527
+readcol,'/Volumes/MacintoshHD2/supcam/quilt/sig.txt',skipline=2,filter,ap1,ap2,ap3,format='(a,f,f,f)'
+readcol,'/Users/mehdi/Downloads/smoka/MITCCDs/test2_gr.dat',gr
+readcol,'/Users/mehdi/Downloads/smoka/MITCCDs/test2_NBr.dat',nb_r
+
+sigv=ap1[0]
+sigb=ap1[2]
+signb=ap1[3]
+sig383=ap1[4]
+sigu=ap1[1]
+;readcol, '/Volumes/MacintoshHD2/supcam/astroref3.cat',id,ra0,dec0,u, g, r, i, z ;33.5591
+;readcol, '/Volumes/MacintoshHD2/supcam/astroref5.txt',ra0,dec0,u, g, r, i, z
+readcol, '/Volumes/MacintoshHD2/supcam/astroref6.txt',ra0,dec0,u, g, r, i, z ; By comparing to the synthetic stellar colors the best zp is 33.75
+
+close,/all
+nb=mrdfits('CAT_527single.fits',1)
+nbm=nb.mag_auto
+f=nb.flags
+nbf=nb.flux_auto
+;ra=uu.x_world
+;dec=uu.y_world
+x=nb.x_image-1
+y=nb.y_image-1
+fxread,'OBJECT.527.1.fits',data,header
+extast,header,astr
+xy2ad, x, y, astr, ra, dec
+rm=where(ra0 ge 34.8 or ra0 le 34.25 or dec0 le -5.6 or dec0 gt -5.08 )
+remove,rm,ra0
+remove,rm,dec0
+remove,rm,g
+remove,rm,r
+remove,rm,u
+rm2=where(f ne 0)
+remove,rm2,ra
+remove,rm2,dec
+remove,rm2,nbm
+remove,rm2,nbf
+mn=median(nbm)
+sigma=stddev(nbm)
+rm3=where(nbf lt 5.*signb)
+if n_elements(rm3) gt 1 then begin 
+remove,rm3,ra
+remove,rm3,dec
+remove,rm3,nbm
+endif
+
+matchcat,ra0,dec0,ra,dec,in0,in,DT=0.3
+print, 'in0 ',n_elements(in0)
+s1=fltarr(n_elements(in0))
+s2=s1
+for i=0,n_elements(in)-1 do begin
+   s1[i]=g[in0[i]]-r[in0[i]]
+   s2[i]=nbm[in[i]]-r[in0[i]]
+endfor
+res=linfit(s1,s2,yfit=yy)
+sig=stddev(s2-yy)
+idd=-1
+for i=0,n_elements(s1)-1 do begin
+   if abs(s2[i]-yy[i]) gt 2.*sig  then idd=[idd,i]
+   
+endfor
+ra2=ra[in]
+dec2=dec[in]
+if n_elements(idd) ge 2 then begin
+   remove,0,idd
+   remove,idd,s1
+   remove,idd,s2
+   remove,idd,ra2
+   remove,idd,dec2
+endif
+openw,1,'527coord.txt'
+in1=where(s1 le 0.4)
+in2=where(s1 ge 1.)
+ra_1=ra2[in1]
+dec_1=dec2[in1]
+ra_2=ra2[in2]
+dec_2=dec2[in2]
+for i=0,n_elements(ra2)-1 do printf,1,ra2[i],dec2[i]
+close,1
+
+openw,lun1,'527_blue.txt',/get_lun
+openw,lun2,'527_red.txt',/get_lun
+for i=0,n_elements(ra_1)-1 do printf,lun1,ra_1[i],dec_1[i]
+for i=0,n_elements(ra_2)-1 do printf,lun2,ra_2[i],dec_2[i]
+free_lun,lun1
+free_lun,lun2
+
+coordfk5,'OBJECT.527.1.fits','527coord.txt','527.reg','green'
+coordfk5,'OBJECT.527.1.fits','527_blue.txt','527_blue.reg','blue'
+coordfk5,'OBJECT.527.1.fits','527_red.txt','527_red.reg','red'
+res=linfit(s1,s2,yfit=yy)
+zp=res[0]
+set_plot, 'ps'
+device,filename='zp_527single.ps',/encap,/color
+plot, s1,s2,psym=3,color=get_colour_by_name("black"),xtitle='g-r',ytitle='NB527_sub-r';,yrange=[-10,10]
+xx=dindgen(40)/10.-1
+oplot,xx,res[1]*xx+res[0],color=get_colour_by_name("red")
+oplot,gr,nb_r,color=get_colour_by_name('green'),psym=sym(3)
+device, /close
+
+device,filename='zp_527single_calib.ps',/encap,/color
+plot, s1,s2+33.750,psym=sym(1),color=get_colour_by_name("black"),xtitle='g-r',ytitle='NB527_sub-r';,yrange=[-10,10]
+xx=dindgen(40)/10.-1
+;oplot,xx,res[1]*xx+res[0],color=get_colour_by_name("red")
+oplot,gr,nb_r,color=get_colour_by_name('green'),psym=sym(13)
+device, /close
+print, 'ZP_527single= ', zp
+NBcor=nbm-zp
+s1=fltarr(n_elements(in0))
+s2=s1
+for i=0,n_elements(s1)-1 do begin
+   s1[i]=g[in0[i]]-r[in0[i]]
+   s2[i]=NBcor[in[i]]-r[in0[i]]
+endfor
+
+makepdf,'zp_527single','zp_527single'
+spawn,'open zp_527single.pdf '
+set_plot,'x'
+plot, s1,s2,psym=sym(1),color=get_colour_by_name("black"),xtitle='g-r',ytitle='NB527_cor-r';,yrange=[-10,10]
+xx=dindgen(40)/10.-1
+oplot,xx,res[1]*xx+res[0],color=get_colour_by_name("red")
+stop
+end
